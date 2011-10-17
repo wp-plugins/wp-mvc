@@ -59,7 +59,7 @@ class MvcLoader {
 			'shells/mvc_shell_dispatcher'
 		);
 		
-		foreach($files as $file) {
+		foreach ($files as $file) {
 			require_once $this->core_path.$file.'.php';
 		}
 		
@@ -69,7 +69,7 @@ class MvcLoader {
 	
 		$plugins = $this->get_ordered_plugins();
 		$plugin_app_paths = array();
-		foreach($plugins as $plugin) {
+		foreach ($plugins as $plugin) {
 			$plugin_app_paths[$plugin] = rtrim(WP_PLUGIN_DIR, '/').'/'.$plugin.'/app/';
 		}
 
@@ -126,18 +126,18 @@ class MvcLoader {
 	
 	private function load_controllers() {
 	
-		foreach($this->plugin_app_paths as $plugin_app_path) {
+		foreach ($this->plugin_app_paths as $plugin_app_path) {
 		
 			$admin_controller_filenames = $this->file_includer->require_php_files_in_directory($plugin_app_path.'controllers/admin/');
 			$public_controller_filenames = $this->file_includer->require_php_files_in_directory($plugin_app_path.'controllers/');
 			
-			foreach($admin_controller_filenames as $filename) {
+			foreach ($admin_controller_filenames as $filename) {
 				if (preg_match('/admin_([^\/]+)_controller\.php/', $filename, $match)) {
 					$this->admin_controller_names[] = $match[1];
 				}
 			}
 			
-			foreach($public_controller_filenames as $filename) {
+			foreach ($public_controller_filenames as $filename) {
 				if (preg_match('/([^\/]+)_controller\.php/', $filename, $match)) {
 					$this->public_controller_names[] = $match[1];
 				}
@@ -149,7 +149,7 @@ class MvcLoader {
 	
 	private function load_libs() {
 		
-		foreach($this->plugin_app_paths as $plugin_app_path) {
+		foreach ($this->plugin_app_paths as $plugin_app_path) {
 		
 			$this->file_includer->require_php_files_in_directory($plugin_app_path.'libs/');
 			
@@ -161,11 +161,11 @@ class MvcLoader {
 		
 		$models = array();
 		
-		foreach($this->plugin_app_paths as $plugin_app_path) {
+		foreach ($this->plugin_app_paths as $plugin_app_path) {
 		
 			$model_filenames = $this->file_includer->require_php_files_in_directory($plugin_app_path.'models/');
 			
-			foreach($model_filenames as $filename) {
+			foreach ($model_filenames as $filename) {
 				$models[] = MvcInflector::class_name_from_filename($filename);
 			}
 		
@@ -173,7 +173,7 @@ class MvcLoader {
 		
 		$this->model_names = array();
 		
-		foreach($models as $model) {
+		foreach ($models as $model) {
 			$this->model_names[] = $model;
 			$model_class = MvcInflector::camelize($model);
 			$model_instance = new $model_class();
@@ -218,7 +218,7 @@ class MvcLoader {
 			);
 			do_action('mvc_admin_init', $mvc_admin_init_args);
 		
-			$title =  MvcInflector::titleize($controller);
+			$title = MvcInflector::titleize($controller);
 			if (!empty($action) && $action != 'index') {
 				$title = MvcInflector::titleize($action).' &lsaquo; '.$title;
 			}
@@ -236,65 +236,68 @@ class MvcLoader {
 		
 		$menu_position = apply_filters('mvc_menu_position', $menu_position);
 		
-		foreach($this->model_names as $model_name) {
+		foreach ($this->model_names as $model_name) {
 		
 			$model = MvcModelRegistry::get_model($model_name);
-			$tableized = MvcInflector::tableize($model_name);
-			$pluralized = MvcInflector::pluralize($model_name);
-			$titleized = MvcInflector::titleize($model_name);
-			$pluralize_titleized = MvcInflector::pluralize_titleize($model_name);
+			
+			if (!$model->hide_menu) {
+				$tableized = MvcInflector::tableize($model_name);
+				$pluralized = MvcInflector::pluralize($model_name);
+				$titleized = MvcInflector::titleize($model_name);
+				$pluralize_titleized = MvcInflector::pluralize_titleize($model_name);
 		
-			$controller_name = 'admin_'.$tableized;
+				$controller_name = 'admin_'.$tableized;
 			
-			$top_level_handle = 'mvc_'.$tableized;
+				$top_level_handle = 'mvc_'.$tableized;
 			
-			$admin_pages = $model->admin_pages;
+				$admin_pages = $model->admin_pages;
 			
-			$method = $controller_name.'_index';
-			$this->dispatcher->{$method} = create_function('', 'MvcDispatcher::dispatch(array("controller" => "'.$controller_name.'", "action" => "index"));');
-			add_menu_page(
-				$pluralize_titleized,
-				$pluralize_titleized,
-				'administrator',
-				$top_level_handle,
-				array($this->dispatcher, $method),
-				null,
-				$menu_position
-			);
+				$method = $controller_name.'_index';
+				$this->dispatcher->{$method} = create_function('', 'MvcDispatcher::dispatch(array("controller" => "'.$controller_name.'", "action" => "index"));');
+				add_menu_page(
+					$pluralize_titleized,
+					$pluralize_titleized,
+					'administrator',
+					$top_level_handle,
+					array($this->dispatcher, $method),
+					null,
+					$menu_position
+				);
 			
-			foreach($admin_pages as $key => $admin_page) {
+				foreach ($admin_pages as $key => $admin_page) {
 				
-				$method = $controller_name.'_'.$admin_page['action'];
+					$method = $controller_name.'_'.$admin_page['action'];
 				
-				if (!method_exists($this->dispatcher, $method)) {
-					$this->dispatcher->{$method} = create_function('', 'MvcDispatcher::dispatch(array("controller" => "'.$controller_name.'", "action" => "'.$admin_page['action'].'"));');
-				}
-				
-				$page_handle = $top_level_handle.'-'.$key;
-				
-				if ($admin_page['in_menu']) {
-					add_submenu_page(
-						$top_level_handle,
-						$admin_page['label'].' &lsaquo; '.$pluralize_titleized,
-						$admin_page['label'],
-						$admin_page['capability'],
-						$page_handle,
-						array($this->dispatcher, $method)
-					);
-				} else {
-					// It looks like there isn't a more native way of creating an admin page without
-					// having it show up in the menu, but if there is, it should be implemented here.
-					// To do: set up capability handling and page title handling for these pages that aren't in the menu
-					$hookname = get_plugin_page_hookname($page_handle,'');
-					if (!empty($hookname)) {
-						add_action($hookname, array($this->dispatcher, $method));
+					if (!method_exists($this->dispatcher, $method)) {
+						$this->dispatcher->{$method} = create_function('', 'MvcDispatcher::dispatch(array("controller" => "'.$controller_name.'", "action" => "'.$admin_page['action'].'"));');
 					}
-					$_registered_pages[$hookname] = true;
-				}
+				
+					$page_handle = $top_level_handle.'-'.$key;
+				
+					if ($admin_page['in_menu']) {
+						add_submenu_page(
+							$top_level_handle,
+							$admin_page['label'].' &lsaquo; '.$pluralize_titleized,
+							$admin_page['label'],
+							$admin_page['capability'],
+							$page_handle,
+							array($this->dispatcher, $method)
+						);
+					} else {
+						// It looks like there isn't a more native way of creating an admin page without
+						// having it show up in the menu, but if there is, it should be implemented here.
+						// To do: set up capability handling and page title handling for these pages that aren't in the menu
+						$hookname = get_plugin_page_hookname($page_handle,'');
+						if (!empty($hookname)) {
+							add_action($hookname, array($this->dispatcher, $method));
+						}
+						$_registered_pages[$hookname] = true;
+					}
 			
-			}
-			$menu_position++;
+				}
+				$menu_position++;
 
+			}
 		}
 	
 	}
@@ -320,13 +323,13 @@ class MvcLoader {
 			$routes = MvcRouter::get_public_routes();
 		}
 		
-		foreach($routes as $route) {
+		foreach ($routes as $route) {
 			
 			$route_path = $route[0];
 			$route_defaults = $route[1];
 			
 			if (strpos($route_path, '{:controller}') !== false) {
-				foreach($this->public_controller_names as $controller) {
+				foreach ($this->public_controller_names as $controller) {
 					$route_rules = $this->get_rewrite_rules($route_path, $route_defaults, $controller);
 					$new_rules = array_merge($new_rules, $route_rules);
 				}
@@ -353,7 +356,7 @@ class MvcLoader {
 		// Add any route params from the route path (e.g. '{:controller}/{:id:[\d]+}') to $query_vars
 		// and append them to the match string for use in a WP rewrite rule
 		preg_match_all('/{:(.+?)(:.*?)?}/', $rewrite_path, $matches);
-		foreach($matches[1] as $query_var) {
+		foreach ($matches[1] as $query_var) {
 			$query_var = 'mvc_'.$query_var;
 			if ($query_var != 'mvc_controller') {
 				$query_var_match_string .= '&'.$query_var.'=$matches['.$query_var_counter.']';
@@ -364,7 +367,7 @@ class MvcLoader {
 		
 		// Do the same as above for route params that are defined as route defaults (e.g. array('action' => 'show'))
 		if (!empty($route_defaults)) {
-			foreach($route_defaults as $query_var => $value) {
+			foreach ($route_defaults as $query_var => $value) {
 				$query_var = 'mvc_'.$query_var;
 				if ($query_var != 'mvc_controller') {
 					$query_var_match_string .= '&'.$query_var.'='.$value;
@@ -403,7 +406,7 @@ class MvcLoader {
 		if ($controller) {
 			$query_params = $wp_query->query;
 			$params = array();
-			foreach($query_params as $key => $value) {
+			foreach ($query_params as $key => $value) {
 				$key = preg_replace('/^(mvc_)/', '', $key);
 				$params[$key] = $value;
 			}
@@ -428,7 +431,7 @@ class MvcLoader {
 	public function add_admin_ajax_routes() {
 		$routes = MvcRouter::get_admin_ajax_routes();
 		if (!empty($routes)) {
-			foreach($routes as $route) {
+			foreach ($routes as $route) {
 				$route['is_admin_ajax'] = true;
 				$method = 'admin_ajax_'.$route['wp_action'];
 				$this->dispatcher->{$method} = create_function('', 'MvcDispatcher::dispatch(array("controller" => "'.$route['controller'].'", "action" => "'.$route['action'].'"));die();');
