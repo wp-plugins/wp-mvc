@@ -124,6 +124,27 @@ class MvcLoader {
 	
 	}
 	
+	public function register_widgets() {
+		foreach ($this->plugin_app_paths as $plugin_app_path) {
+			$directory = $plugin_app_path.'widgets/';
+			$widget_filenames = $this->file_includer->require_php_files_in_directory($directory);
+  
+			$pluginReplace = array(
+				WP_CONTENT_DIR,
+				'/plugins/',
+				'/app/'
+			);
+			
+			$plugin = str_replace($pluginReplace, '',$plugin_app_path);
+
+			foreach ($widget_filenames as $widget_file) {
+				$widget_name = str_replace('.php', '', $widget_file);
+				$widget_class = MvcInflector::camelize($plugin).'_'.MvcInflector::camelize($widget_name);
+				register_widget($widget_class);
+			}
+		}
+	}
+	
 	private function load_controllers() {
 	
 		foreach ($this->plugin_app_paths as $plugin_app_path) {
@@ -331,11 +352,11 @@ class MvcLoader {
 			if (strpos($route_path, '{:controller}') !== false) {
 				foreach ($this->public_controller_names as $controller) {
 					$route_rules = $this->get_rewrite_rules($route_path, $route_defaults, $controller);
-					$new_rules = array_merge($new_rules, $route_rules);
+					$new_rules = array_merge($route_rules, $new_rules);
 				}
 			} else if (!empty($route_defaults['controller'])) {
 				$route_rules = $this->get_rewrite_rules($route_path, $route_defaults, $route_defaults['controller'], 1);
-				$new_rules = array_merge($new_rules, $route_rules);
+				$new_rules = array_merge($route_rules, $new_rules);
 			}
 		}
 		

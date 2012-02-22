@@ -4,6 +4,7 @@ class MvcController {
 	
 	protected $file_includer = null;
 	public $is_controller = true;
+	public $model = null;
 	public $name = '';
 	public $view_rendered = false;
 	public $view_vars = array();
@@ -42,14 +43,17 @@ class MvcController {
 			$this->load_helper('Form');
 		}
 		
-		$model = $this->model->name;
-		
-		if (class_exists($model.'Helper')) {
-			$helper_name = $model.'Helper';
-		} else if (class_exists('AppHelper')) {
-			$helper_name = 'AppHelper';
+		if (empty($this->model)) {
+			$helper_name = class_exists('AppHelper') ? 'AppHelper' : 'MvcHelper';
 		} else {
-			$helper_name = 'MvcHelper';
+			$model = $this->model->name;
+			if (class_exists($model.'Helper')) {
+				$helper_name = $model.'Helper';
+			} else if (class_exists('AppHelper')) {
+				$helper_name = 'AppHelper';
+			} else {
+				$helper_name = 'MvcHelper';
+			}
 		}
 		$this->helper = new $helper_name();
 	
@@ -73,8 +77,11 @@ class MvcController {
 		$this->views_path .= MvcInflector::tableize($model).'/';
 		$this->model_name = $model;
 		// To do: remove the necessity of this redundancy
-		$this->model = new $model();
-		$this->{$model} = new $model();
+		if (class_exists($model)) {
+			$model_instance = new $model();
+			$this->model = $model_instance;
+			$this->{$model} = $model_instance;
+		}
 	}
 	
 	protected function load_helper($helper_name) {
@@ -215,6 +222,22 @@ class MvcController {
 		
 		$this->include_view($path, $view_vars);
 	
+	}
+	
+	public function render_to_string($path, $options=array()) {
+		$defaults = array(
+			'bypass_layout' => true,
+			'vars' => $this->view_vars
+		);
+		$is_controller = $this->is_controller;
+		$this->is_controller = false;
+		$options = array_merge($defaults, $options);
+		ob_start();
+		$this->include_view($path, $options['vars']);
+		$string = ob_get_contents();
+		ob_end_clean();
+		$this->is_controller = $is_controller;
+		return $string;
 	}
 	
 	protected function include_view($path, $view_vars=array()) {

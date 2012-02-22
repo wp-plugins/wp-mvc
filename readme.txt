@@ -2,10 +2,10 @@
 Contributors: tombenner
 Tags: mvc, framework, model, view, controller, development, plugin
 Requires at least: 3.0
-Tested up to: 3.2.1
-Stable tag: 1.1.1
+Tested up to: 3.3.1
+Stable tag: 1.1.5
 
-WP MVC is a full-fledged MVC framework, similar to CakePHP and Rails, that developers can use to create WordPress plugins.
+WP MVC is a full-fledged MVC framework, similar to CakePHP and Rails, that developers can use inside of WordPress.
 
 == Description ==
 
@@ -18,6 +18,8 @@ WP MVC fills this gap. The basic idea is that you create an app/ directory that 
 For more extensive documentation, and to see what WP MVC is capable of, please visit [wpmvc.org](http://wpmvc.org).
 
 If you'd like to grab development releases, see what new features are being added, or browse the source code please visit the [GitHub repo](http://github.com/tombenner/wp-mvc).
+
+This is free and open source software. If you like it and want to encourage further development, please [flattr it](https://flattr.com/thing/487376/WP-MVC). Thanks!
 
 == Installation ==
 
@@ -52,10 +54,10 @@ WP MVC is a full-fledged MVC framework, but behind the scenes it uses existing W
 
 = Is feature X available? =
 
-Most of the functionality that's available is used in the example plugins, so if there's functionality that you'd like to use that isn't implemented in those or mentioned on [wpmvc.org](http://wpmvc.org), it may not exist yet. However, if it's something that is widely useful, I'd certainly be willing to implement it myself or to accept any well-written code that implements it. Please feel free to either add a topic in the WordPress forum or contact me through GitHub for any such requests:
+If there's functionality that you'd like to use that isn't implemented in the example plugins or mentioned on [wpmvc.org](http://wpmvc.org), it may not exist yet. However, if it's something that is widely useful, I'd certainly be willing to implement it myself or to accept any well-written code that implements it. Please feel free to either add a topic in the WordPress forum or contact me through GitHub for any such requests:
 
 * [WordPress Forum](http://wordpress.org/tags/wp-mvc?forum_id=10)
-* [GitHub](http://github.com/tombenner/)
+* [GitHub](http://github.com/tombenner)
 
 == Screenshots ==
 

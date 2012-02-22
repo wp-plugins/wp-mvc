@@ -4,7 +4,7 @@ Plugin Name: WP MVC
 Plugin URI: http://wordpress.org/extend/plugins/wp-mvc/
 Description: Sets up an MVC framework inside of WordPress.
 Author: Tom Benner
-Version: 1.1
+Version: 1.1.5
 Author URI: 
 */
 
@@ -23,6 +23,8 @@ add_action('init', array($mvc_loader, 'init'));
 add_action('admin_init', array($mvc_loader, 'admin_init'));
 
 add_action('admin_menu', array($mvc_loader, 'add_menu_pages'));
+
+add_action('widgets_init', array($mvc_loader, 'register_widgets'));
 
 // Filters for public URLs
 
