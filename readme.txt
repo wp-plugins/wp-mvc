@@ -3,9 +3,9 @@ Contributors: tombenner
 Tags: mvc, framework, model, view, controller, development, plugin
 Requires at least: 3.0
 Tested up to: 3.3.1
-Stable tag: 1.1.4
+Stable tag: 1.1.5
 
-WP MVC is a full-fledged MVC framework, similar to CakePHP and Rails, that developers can use to create WordPress plugins.
+WP MVC is a full-fledged MVC framework, similar to CakePHP and Rails, that developers can use inside of WordPress.
 
 == Description ==
 

@@ -9,22 +9,40 @@ class MvcShell {
 	
 		$this->core_path = MVC_CORE_PATH;
 		$this->file_includer = new MvcFileIncluder();
-	
+		
+		$this->file_includer->require_core_file('console/color.php');
+		$this->file_includer->require_core_file('console/table.php');
+		
 		$this->init($args);
 	
 	}
 	
-	// This can be overwritten by descendant classes to add custom functionality during shell initialization
+	/**
+	 * Empty callback method. This can be overwritten by descendant classes to 
+	 * add custom functionality during shell initialization
+	 * 
+	 * @param type $args 
+	 */
 	protected function init($args) {
-	
 	}
 
 	public function main($args) {
 		$this->out('To handle commands without any arguments, please define a main() method in the shell.');
 	}
 	
-	public function out($string) {
-		echo $string."\n";
+	public function out($string, $append_new_line = true) {
+		echo $string;
+		if ($append_new_line) {
+			echo "\n";
+		}
+	}
+	
+	public function nl($multiplier = 1) {
+		echo str_repeat("\n", $multiplier);
+	}
+	
+	public function hr($length = 40) {
+		echo str_repeat('-', $length)."\n";
 	}
 	
 	protected function load_helper($helper_name) {
