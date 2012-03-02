@@ -5,7 +5,7 @@
 	<p class="search-box">
 		<label class="screen-reader-text" for="post-search-input">Search:</label>
 		<input type="hidden" name="page" value="<?php echo MvcRouter::admin_page_param($model->name); ?>" />
-		<input type="text" name="q" value="<?php empty($params['q']) ? '' : $params['q']; ?>" />
+		<input type="text" name="q" value="<?php echo empty($params['q']) ? '' : $params['q']; ?>" />
 		<input type="submit" value="Search" class="button" />
 	</p>
 
@@ -26,15 +26,15 @@
 <table class="widefat post fixed" cellspacing="0">
 
 	<thead>
-		<?php echo $helper->admin_header_cells($model); ?>
+		<?php echo $helper->admin_header_cells($this); ?>
 	</thead>
 
 	<tfoot>
-		<?php echo $helper->admin_header_cells($model); ?>
+		<?php echo $helper->admin_header_cells($this); ?>
 	</tfoot>
 
 	<tbody>
-		<?php echo $helper->admin_table_cells($model, $objects); ?>
+		<?php echo $helper->admin_table_cells($this, $objects); ?>
 	</tbody>
 	
 </table>

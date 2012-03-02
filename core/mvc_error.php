@@ -57,7 +57,7 @@ class MvcError {
 	
 		$backtrace = debug_backtrace();
 		
-		$context = $backtrace[2];
+		$context = empty($backtrace[3]['line']) ? $backtrace[2] : $backtrace[3];
 		
 		return $context;
 	
