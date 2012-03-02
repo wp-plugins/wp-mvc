@@ -2,24 +2,29 @@
 
 class MvcModel {
 
+	public $name = null;
 	public $table = null;
 	public $primary_key = 'id';
 	public $belongs_to = null;
 	public $has_many = null;
 	public $has_and_belongs_to_many = null;
 	public $associations = null;
-	public $admin_pages = null;
+	public $properties = null;
 	public $validation_error = null;
 	public $validation_error_html = null;
-	public $hide_menu = false;
+	public $schema = null;
+	public $wp_post = null;
 	private $data_validator = null;
 	private $db_adapter = null;
+	private $wp_post_adapter = null;
 	
 	function __construct() {
 		
 		global $wpdb;
 		
 		$this->name = preg_replace('/Model$/', '', get_class($this));
+		
+		$this->check_for_obsolete_functionality();
 		
 		$table = empty($this->table) ? $wpdb->prefix.MvcInflector::tableize($this->name) : $this->process_table_name($this->table);
 		
@@ -33,6 +38,7 @@ class MvcModel {
 			'conditions' => empty($this->conditions) ? null : $this->conditions,
 			'limit' => empty($this->limit) ? null : $this->limit,
 			'includes' => empty($this->includes) ? null : $this->includes,
+			'group' => empty($this->group) ? null : $this->group,
 			'per_page' => empty($this->per_page) ? 10 : $this->per_page,
 			'validate' => empty($this->validate) ? null : $this->validate
 		);
@@ -46,25 +52,40 @@ class MvcModel {
 		
 		$this->data_validator = new MvcDataValidator();
 		
-		$this->init_admin_pages();
-		$this->init_admin_columns();
-		$this->init_associations();
 		$this->init_schema();
+		
+		if ($this->wp_post) {
+			$this->wp_post_adapter = new MvcPostAdapter();
+			$this->wp_post_adapter->verify_settings($this);
+			if (empty($this->belongs_to)) {
+				$this->belongs_to = array();
+			}
+			$association = array(
+				'Post' => array(
+					'class' => 'MvcPost'
+				)
+			);
+			$this->belongs_to = array_merge($association, $this->belongs_to);
+		}
+		
+		$this->init_associations();
+		$this->init_properties();
 	
 	}
 	
 	public function new_object($data) {
-		$object = false;
+		$object = new MvcModelObject($this);
 		foreach ($data as $field => $value) {
-			$object->{$field} = $value;
+			$object->$field = $value;
 		}
 		$object = $this->process_objects($object);
 		return $object;
 	}
 	
 	public function create($data) {
+		$data = $this->object_to_array($data);
 		if (empty($data[$this->name])) {
-			return false;
+			$data = array($this->name => $data);
 		}
 		$model_data = $data[$this->name];
 		if (method_exists($this, 'before_save')) {
@@ -74,21 +95,27 @@ class MvcModel {
 		}
 		$id = $this->insert($model_data);
 		$this->update_associations($id, $model_data);
-		if (method_exists($this, 'after_save')) {
+		if (method_exists($this, 'after_create') || method_exists($this, 'after_save')) {
 			$object = $this->find_by_id($id);
-			$this->after_save($object);
+			if (method_exists($this, 'after_create')) {
+				$this->after_create($object);
+			}
+			if (method_exists($this, 'after_save')) {
+				$this->after_save($object);
+			}
 		}
 		return $id;
 	}
 	
 	public function save($data) {
+		$data = $this->object_to_array($data);
 		if (empty($data[$this->name])) {
-			return false;
+			$data = array($this->name => $data);
 		}
-		if (!empty($data[$this->name]['id'])) {
+		if (!empty($data[$this->name][$this->primary_key])) {
 			$model_data = $data[$this->name];
-			$id = $model_data['id'];
-			unset($model_data['id']);
+			$id = $model_data[$this->primary_key];
+			unset($model_data[$this->primary_key]);
 			$valid = $this->validate_data($model_data);
 			if ($valid !== true) {
 				$this->validation_error = $valid;
@@ -116,29 +143,87 @@ class MvcModel {
 	public function insert($data) {
 		$insert_id = $this->db_adapter->insert($data);
 		$this->insert_id = $insert_id;
+		if ($this->has_post()) {
+			$data[$this->primary_key] = $insert_id;
+			$this->save_post($data);
+		}
 		return $insert_id;
 	}
 	
-	public function update($id, $data) {
+	public function update($id, $data, $update_options=array()) {
 		$options = array(
 			'conditions' => array($this->name.'.'.$this->primary_key => $id)
 		);
-		$this->db_adapter->update_all($data, $options);
+		$this->db_adapter->update_all($data, $options, $update_options);
+		if ($this->has_post() && !(isset($update_options['bypass_save_post']) && $update_options['bypass_save_post'])) {
+			$object = $this->find_by_id($id);
+			$this->save_post($object);
+		}
 	}
 	
-	public function update_all($data, $options=array()) {
+	public function update_all($data, $options=array(), $update_options=array()) {
 		$this->db_adapter->update_all($data, $options);
+		if ($this->has_post() && !(isset($update_options['bypass_save_post']) && $update_options['bypass_save_post'])) {
+			$objects = $this->find($options);
+			foreach ($objects as $object) {
+				$this->save_post($object);
+			}
+		}
 	}
 	
 	public function delete($id) {
 		$options = array(
 			'conditions' => array($this->primary_key => $id)
 		);
-		$this->db_adapter->delete_all($options);
+		$this->delete_all($options);
 	}
 	
 	public function delete_all($options=array()) {
+		$has_post = $this->has_post();
+		$before_delete_method_exists = method_exists($this, 'before_delete');
+		$objects = null;
+		if ($has_post || $before_delete_method_exists) {
+			$objects = $this->find($options);
+			foreach ($objects as $object) {
+				if ($has_post) {
+					wp_delete_post($object->post_id, true);
+				}
+				if ($before_delete_method_exists) {
+					$this->before_delete($object);
+				}
+			}
+		}
+		$this->delete_dependent_associations($objects, $options);
 		$this->db_adapter->delete_all($options);
+	}
+	
+	protected function delete_dependent_associations($objects, $options=array()) {
+		if (empty($objects)) {
+			$objects = $this->find($options);
+		}
+		if (!empty($objects)) {
+			foreach ($this->associations as $association) {
+				if ($association['dependent']) {
+					if ($association['type'] == 'has_many') {
+						$model = MvcModelRegistry::get_model($association['class']);
+						foreach ($objects as $object) {
+							$options = array(
+								'conditions' => array($association['foreign_key'] => $object->{$this->primary_key})
+							);
+							$model->delete_all($options);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	public function save_post($object) {
+		$this->wp_post_adapter->save_post($this, $object);
+	}
+	
+	public function has_post() {
+		return $this->wp_post_adapter ? true : false;
 	}
 	
 	public function find($options=array()) {
@@ -179,7 +264,46 @@ class MvcModel {
 			'page' => $options['page']
 		);
 		return $response;
+	}
 	
+	public function count($options=array()) {
+		$clauses = $this->db_adapter->get_sql_select_clauses($options);
+		$clauses['select'] = 'SELECT COUNT(*)';
+		$sql = implode(' ', $clauses);
+		$result = $this->db_adapter->get_var($sql);
+		return $result;
+	}
+	
+	public function max($column, $options=array()) {
+		$clauses = $this->db_adapter->get_sql_select_clauses($options);
+		$clauses['select'] = 'SELECT MAX('.$this->db_adapter->escape($column).')';
+		$sql = implode(' ', $clauses);
+		$result = $this->db_adapter->get_var($sql);
+		return $result;
+	}
+	
+	public function min($column, $options=array()) {
+		$clauses = $this->db_adapter->get_sql_select_clauses($options);
+		$clauses['select'] = 'SELECT MIN('.$this->db_adapter->escape($column).')';
+		$sql = implode(' ', $clauses);
+		$result = $this->db_adapter->get_var($sql);
+		return $result;
+	}
+	
+	public function sum($column, $options=array()) {
+		$clauses = $this->db_adapter->get_sql_select_clauses($options);
+		$clauses['select'] = 'SELECT SUM('.$this->db_adapter->escape($column).')';
+		$sql = implode(' ', $clauses);
+		$result = $this->db_adapter->get_var($sql);
+		return $result;
+	}
+	
+	public function average($column, $options=array()) {
+		$clauses = $this->db_adapter->get_sql_select_clauses($options);
+		$clauses['select'] = 'SELECT AVERAGE('.$this->db_adapter->escape($column).')';
+		$sql = implode(' ', $clauses);
+		$result = $this->db_adapter->get_var($sql);
+		return $result;
 	}
 	
 	public function get_keyword_conditions($fields, $keywords) {
@@ -340,68 +464,6 @@ class MvcModel {
 		return true;
 	}
 	
-	private function init_admin_pages() {
-		$titleized = MvcInflector::titleize($this->name);
-		$default_pages = array(
-			'add' => array(
-				'label' => 'Add New'
-			),
-			'delete' => array(
-				'label' => 'Delete '.$titleized,
-				'in_menu' => false
-			),
-			'edit' => array(
-				'label' => 'Edit '.$titleized,
-				'in_menu' => false
-			)
-		);
-		if (!isset($this->admin_pages)) {
-			$this->admin_pages = $default_pages;
-		}
-		$admin_pages = array();
-		foreach ($this->admin_pages as $key => $value) {
-			if (is_int($key)) {
-				$key = $value;
-				$value = array();
-			}
-			$defaults = array(
-				'action' => $key,
-				'in_menu' => true,
-				'label' => MvcInflector::titleize($key),
-				'capability' => 'administrator'
-			);
-			if (isset($default_pages[$key])) {
-				$value = array_merge($default_pages[$key], $value);
-			}
-			$value = array_merge($defaults, $value);
-			$admin_pages[$key] = $value;
-		}
-		$this->admin_pages = $admin_pages;
-	}
-	
-	private function init_admin_columns() {
-		$admin_columns = array();
-		foreach ($this->admin_columns as $key => $value) {
-			if (is_array($value)) {
-				if (!isset($value['label'])) {
-					$value['label'] = MvcInflector::titleize($key);
-				}
-			} else if (is_integer($key)) {
-				$key = $value;
-				if ($value == 'id') {
-					$value = array('label' => 'ID');
-				} else {
-					$value = array('label' => MvcInflector::titleize($value));
-				}
-			} else {
-				$value = array('label' => $value);
-			}
-			$value['key'] = $key;
-			$admin_columns[$key] = $value;
-		}
-		$this->admin_columns = $admin_columns;
-	}
-	
 	private function process_objects($objects, $options=array()) {
 		if (!is_array($objects) && !is_object($objects)) {
 			return null;
@@ -418,19 +480,15 @@ class MvcModel {
 			$includes = array($includes);
 		}
 		
-		if (!empty($includes)) {
-			// Instantiate associated models, so that they don't need to be instantiated multiple times in the subsequent for loop
-			$models = array();
-			foreach ($includes as $key => $include) {
-				$model_name = is_string($include) ? $include : $key;
-				$models[$model_name] = new $model_name();
-			}
-		}
-		
 		$recursive = isset($options['recursive']) ? $options['recursive'] - 1 : 2;
 		
 		foreach ($objects as $key => $object) {
 		
+			if (get_class($object) != 'MvcModelObject') {
+				$array = get_object_vars($object);
+				$object = $this->new_object($array);
+			}
+			
 			if (!empty($this->primary_key)) {
 				$object->__id = $object->{$this->primary_key};
 			}
@@ -456,7 +514,7 @@ class MvcModel {
 					if (empty($association['fields'])) {
 						$association['fields'] = array($association['name'].'.*');
 					}
-					$model = $models[$model_name];
+					$model = MvcModelRegistry::get_model($model_name);
 					switch ($association['type']) {
 						case 'belongs_to':
 							$associated_object = $model->find_by_id($object->{$association['foreign_key']}, array(
@@ -543,76 +601,157 @@ class MvcModel {
 	}
 	
 	protected function init_associations() {
+		if (!is_array($this->associations)) {
+			$this->associations = array();
+		}
 		if (!empty($this->belongs_to)) {
 			foreach ($this->belongs_to as $key => $value) {
 				$config = null;
 				if (is_string($value)) {
-					$association = $value;
+					$association_name = $value;
 					$config = array(
 						'type' => 'belongs_to',
-						'name' => $association,
-						'class' => $association,
-						'foreign_key' => MvcInflector::underscore($association).'_id',
-						'includes' => null
+						'name' => $association_name,
+						'class' => $association_name,
+						'foreign_key' => MvcInflector::underscore($association_name).'_id',
+						'includes' => null,
+						'dependent' => false
 					);
 				} else if (is_string($key) && is_array($value)) {
-					$association = $key;
+					$association_name = $key;
 					$config = array(
 						'type' => 'belongs_to',
-						'name' => empty($value['name']) ? $association : $value['name'],
-						'class' => empty($value['class']) ? $association : $value['class'],
-						'foreign_key' => empty($value['foreign_key']) ? MvcInflector::underscore($association).'_id' : $value['foreign_key'],
-						'includes' => null
+						'name' => empty($value['name']) ? $association_name : $value['name'],
+						'class' => empty($value['class']) ? $association_name : $value['class'],
+						'foreign_key' => empty($value['foreign_key']) ? MvcInflector::underscore($association_name).'_id' : $value['foreign_key'],
+						'includes' => isset($value['fields']) ? $value['fields'] : null,
+						'dependent' => isset($value['dependent']) ? $value['dependent'] : false
 					);
 				}
 				if (!empty($config)) {
-					if (!is_array($this->associations)) {
-						$this->associations = array();
-					}
-					$this->associations[$association] = $config;
+					$this->associations[$association_name] = $config;
 				}
 			}
 		}
 		if (!empty($this->has_many)) {
-			foreach ($this->has_many as $association) {
-				if (is_string($association)) {
-					if (!is_array($this->associations)) {
-						$this->associations = array();
-					}
+			foreach ($this->has_many as $key => $value) {
+				$config = null;
+				if (is_string($value)) {
+					$association_name = $value;
 					$config = array(
 						'type' => 'has_many',
-						'name' => $association,
-						'class' => $association,
+						'name' => $association_name,
+						'class' => $association_name,
 						'foreign_key' => MvcInflector::underscore($this->name).'_id',
-						'includes' => null
+						'fields' => null,
+						'includes' => null,
+						'dependent' => false
 					);
-					$this->associations[$association] = $config;
+				} else if (is_string($key) && is_array($value)) {
+					$association_name = $key;
+					$config = array(
+						'type' => 'has_many',
+						'name' => empty($value['name']) ? $association_name : $value['name'],
+						'class' => empty($value['class']) ? $association_name : $value['class'],
+						'foreign_key' => empty($value['foreign_key']) ? MvcInflector::underscore($this->name).'_id' : $value['foreign_key'],
+						'fields' => isset($value['fields']) ? $value['fields'] : null,
+						'includes' => null,
+						'dependent' => isset($value['dependent']) ? $value['dependent'] : false
+					);
+				}
+				if (!empty($config)) {
+					$this->associations[$association_name] = $config;
 				}
 			}
 		}
 		if (!empty($this->has_and_belongs_to_many)) {
-			foreach ($this->has_and_belongs_to_many as $association_name => $association) {
-				if (!is_array($this->associations)) {
-					$this->associations = array();
-				}
-				if (isset($association['fields'])) {
-					foreach ($association['fields'] as $key => $field) {
-						$association['fields'][$key] = $association_name.'.'.$field;
+			foreach ($this->has_and_belongs_to_many as $key => $value) {
+				if (is_string($key) && is_array($value)) {
+					$association_name = $key;
+					if (isset($value['fields'])) {
+						foreach ($value['fields'] as $key => $field) {
+							$value['fields'][$key] = $association_name.'.'.$field;
+						}
 					}
+					$config = array(
+						'type' => 'has_and_belongs_to_many',
+						'name' => $association_name,
+						'class' => $association_name,
+						'foreign_key' => isset($value['foreign_key']) ? $value['foreign_key'] : MvcInflector::underscore($this->name).'_id',
+						'association_foreign_key' => isset($value['association_foreign_key']) ? $value['association_foreign_key'] : MvcInflector::underscore($association_name).'_id',
+						'join_table' => $this->process_table_name($value['join_table']),
+						'fields' => isset($value['fields']) ? $value['fields'] : null,
+						'includes' => isset($value['includes']) ? $value['includes'] : null,
+						'dependent' => isset($value['dependent']) ? $value['dependent'] : false
+					);
+					$this->associations[$association_name] = $config;
 				}
-				$config = array(
-					'type' => 'has_and_belongs_to_many',
-					'name' => $association_name,
-					'class' => $association_name,
-					'foreign_key' => isset($association['foreign_key']) ? $association['foreign_key'] : MvcInflector::underscore($this->name).'_id',
-					'association_foreign_key' => isset($association['association_foreign_key']) ? $association['association_foreign_key'] : MvcInflector::underscore($association_name).'_id',
-					'join_table' => $this->process_table_name($association['join_table']),
-					'fields' => isset($association['fields']) ? $association['fields'] : null,
-					'includes' => isset($association['includes']) ? $association['includes'] : null
-				);
-				$this->associations[$association_name] = $config;
 			}
 		}
+	}
+	
+	protected function init_properties() {
+		$this->properties = array();
+		foreach ($this->associations as $association_name => $association) {
+			$property_name = null;
+			if ($association['type'] == 'belongs_to') {
+				$property_name = MvcInflector::underscore($association_name);
+			} else if (in_array($association['type'], array('has_many', 'has_and_belongs_to_many'))) {
+				$property_name = MvcInflector::tableize($association_name);
+			}
+			if ($property_name) {
+				$this->properties[$property_name] = array(
+					'type' => 'association',
+					'association' => $association
+				);
+			}
+		}
+	}
+	
+	protected function check_for_obsolete_functionality() {
+		$obsolete_attributes = array(
+			'admin_pages' => array('should be defined as \'AdminPages\' in MvcConfiguration', 'http://wpmvc.org/documentation/1.2/66/adminpages/'),
+			'admin_columns' => array('should be defined as \'default_columns\' in the admin controller', 'http://wpmvc.org/documentation/1.2/16/default_columns/'),
+			'admin_searchable_fields' => array('should be defined as \'default_searchable_fields\' in the admin controller', 'http://wpmvc.org/documentation/1.2/18/default_searchable_fields/'),
+			'admin_search_joins' => array('should be defined as \'default_searchable_joins\' in the admin controller', 'http://wpmvc.org/documentation/1.2/17/default_search_joins/'),
+			'public_searchable_fields' => array('should be defined as \'default_searchable_fields\' in the public controller', 'http://wpmvc.org/documentation/1.2/18/default_searchable_fields/'),
+			'public_search_joins' => array('should be defined as \'default_searchable_joins\' in the public controller', 'http://wpmvc.org/documentation/1.2/17/default_search_joins/'),
+			'hide_menu' => array('should be defined as \'in_menu\' in \'AdminPages\' in MvcConfiguration', 'http://wpmvc.org/documentation/1.2/66/adminpages/')
+		);
+		foreach ($obsolete_attributes as $attribute => $value) {
+			if (isset($this->$attribute)) {
+				$message = $value[0];
+				$url = $value[1];
+				$message = 'The \''.$attribute.'\' attribute (in the '.$this->name.' model) '.$message.' as of WP MVC 1.2';
+				$message .= ' (<a href="'.$url.'">read more</a>).';
+				MvcError::fatal($message);
+			}
+		}
+	}
+	
+	protected function object_to_array($data) {
+		if (is_object($data)) {
+			return get_object_vars($data);
+		}
+		return $data;
+	}
+	
+	public function __call($method, $args) {
+		if (substr($method, 0, 8) == 'find_by_') {
+			$attribute = substr($method, 8);
+			if (isset($this->schema[$attribute])) {
+				$object = $this->find(array('conditions' => array($attribute => $args[0])));
+				return $object;
+			}
+		}
+		if (substr($method, 0, 12) == 'find_one_by_') {
+			$attribute = substr($method, 12);
+			if (isset($this->schema[$attribute])) {
+				$object = $this->find_one(array('conditions' => array($attribute => $args[0])));
+				return $object;
+			}
+		}
+		MvcError::fatal('Undefined method: '.$class.'::'.$method.'.');
 	}
 
 }

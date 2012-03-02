@@ -2,15 +2,30 @@
 
 class DocumentationHelper extends MvcHelper {
 
-	private $node_id = null;
+	private $node_local_id = null;
 	private $documentation_node_model = null;
 	
 	public function init() {
+		$this->version = displayed_documentation_version();
 		$this->documentation_node_model = MvcModelRegistry::get_model('DocumentationNode');
 	}
 	
-	public function parse_documentation($string, $node_id=null) {
-		$this->node_id = $node_id;
+	public function parse_documentation_with_id($string, $id) {
+		$node = $this->documentation_node_model->find_by_id($id);
+		if (!empty($node->local_id)) {
+			$this->node_local_id = $node->local_id;
+		}
+		$string = $this->parse_documentation_string($string);
+		return $string;
+	}
+	
+	public function parse_documentation_with_local_id($string, $local_id) {
+		$this->node_local_id = $local_id;
+		$string = $this->parse_documentation_string($string);
+		return $string;
+	}
+	
+	public function parse_documentation_string($string) {
 		$string = $this->parse_shortcodes($string);
 		$string = $this->parse_markdown($string);
 		return $string;
@@ -42,8 +57,8 @@ class DocumentationHelper extends MvcHelper {
 				break;
 			case 'link':
 				if (!empty($attributes['id'])) {
-					$object = $this->documentation_node_model->find_by_id($attributes['id']);
-					$result = '<a href="'.mvc_public_url(array('controller' => 'documentation_nodes', 'action' => 'show', 'object' => $object)).'" title="'.esc_attr($text).'">'.$text.'</a>';
+					$object = $this->documentation_node_model->find_one(array('conditions' => array('local_id' => $attributes['id'], 'documentation_version_id' => $this->version->id)));
+					$result = '<a href="'.mvc_public_url(array('object' => $object)).'" title="'.esc_attr($text).'">'.$text.'</a>';
 				}
 				break;
 			default:
@@ -58,15 +73,15 @@ class DocumentationHelper extends MvcHelper {
 		$result = '['.$match[1].$match[2].']';
 		switch ($code) {
 			case 'children_list':
-				$parent_node_id = $this->node_id;
+				$parent_node_id = $this->node_local_id;
 				$documentation_node = new DocumentationNode();
-				$children = $documentation_node->find(array('conditions' => array('parent_id' => $parent_node_id)));
+				$children = $documentation_node->find(array('conditions' => array('parent_id' => $parent_node_id, 'documentation_version_id' => $this->version->id)));
 				$html = '';
 				foreach($children as $node) {
 					$url = mvc_public_url(array('controller' => 'documentation_nodes', 'action' => 'show', 'object' => $node));
 					$html .= '<h3 class="section-header">'.$node->title.'</h3>';
 					$html .= '<div class="view-single-page"><a href="'.$url.'" title="View this page">View this page</a></div>';
-					$html .= $this->parse_documentation($node->content, $node->id);
+					$html .= $this->parse_documentation_with_local_id($node->content, $node->local_id);
 				}
 				$this->id = $parent_node_id;
 				$result = $html;

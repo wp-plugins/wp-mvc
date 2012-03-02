@@ -3,9 +3,12 @@
 class MvcController {
 	
 	protected $file_includer = null;
+	public $after = null;
+	public $before = null;
 	public $is_controller = true;
 	public $model = null;
 	public $name = '';
+	public $params = null;
 	public $view_rendered = false;
 	public $view_vars = array();
 	
@@ -56,7 +59,14 @@ class MvcController {
 			}
 		}
 		$this->helper = new $helper_name();
-	
+		
+		if (is_string($this->before)) {
+			$this->before = array($this->before);
+		}
+		if (is_string($this->after)) {
+			$this->after = array($this->after);
+		}
+		
 	}
 	
 	public function index() {
@@ -130,7 +140,7 @@ class MvcController {
 		}
 		if (!empty($object)) {
 			$this->set('object', $object);
-			MvcObjectRegistry::add_object($this->model->name, &$this->object);
+			MvcObjectRegistry::add_object($this->model->name, $this->object);
 			return true;
 		}
 		MvcError::warning('Object not found.');
@@ -161,6 +171,7 @@ class MvcController {
 			$this->main_view = $path;
 			// We're now entering the view, so $this should no longer be a controller
 			$this->is_controller = false;
+			$this->set('params', $this->params);
 			$this->render_view_with_view_vars($layout_directory.$layout, $options);
 			if (!$this->is_admin) {
 				die();
@@ -203,7 +214,7 @@ class MvcController {
 			$path = $this->name.'/'.$path;
 		}
 		
-		if (!empty($options['collection'])) {
+		if (isset($options['collection'])) {
 			$var_name = empty($options['as']) ? 'object' : $options['as'];
 			foreach ($options['collection'] as $object) {
 				$view_vars = array();
