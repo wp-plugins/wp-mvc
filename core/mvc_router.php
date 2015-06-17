@@ -26,7 +26,7 @@ class MvcRouter {
             }
             $model = MvcModelRegistry::get_model($model_name);
             if (!empty($model) && method_exists($model, 'to_url')) {
-                $url = site_url('/');
+                $url = home_url('/');
                 $method = new ReflectionMethod(get_class($model), 'to_url');
                 $parameter_count = $method->getNumberOfParameters();
                 if ($parameter_count == 2) {
@@ -49,7 +49,7 @@ class MvcRouter {
                 }
             }
         }
-        $url = site_url('/');
+        $url = home_url('/');
         if ($matched_route) {
             $path_pattern = $matched_route[0];
             preg_match_all('/{:([\w]+).*?}/', $path_pattern, $matches, PREG_SET_ORDER);
@@ -114,7 +114,7 @@ class MvcRouter {
         return $params;
     }
     
-    public function admin_page_param($options=array()) {
+    static function admin_page_param($options=array()) {
         if (is_string($options)) {
             $options = array('model' => $options);
         }
