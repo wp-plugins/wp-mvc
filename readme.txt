@@ -46,6 +46,10 @@ For a simple example tutorial on this, please see the [tutorial on wpmvc.org](ht
 
 == Frequently Asked Questions ==
 
+= I am getting a 404 when I add a new route =
+
+You need to go to Settings > Permalinks and click "save". This <a href="https://codex.wordpress.org/Function_Reference/flush_rewrite_rules">flushes the WordPress rewrite rules</a>. For performance reasons, the rewrite rules are only flushed either when the plugin is activated or when the Permalinks are saved. So, if you are developing with the plugin activated and adding controller routes as you go, you need to use this approach to flush the rewrite rules and use your new URL endpoints.
+
 = What relation does this have to other MVC frameworks? =
 
 WP MVC is a full-fledged MVC framework, but behind the scenes it uses existing WordPress functionality to lessen its footprint and better interface with the parent WordPress application. The developer will not need to know about much of this, though, and may merely treat it as another MVC framework. It draws on concepts and workflows from other MVC frameworks; Rails and CakePHP are the biggest influences, and you may see some of their naming conventions being used.
