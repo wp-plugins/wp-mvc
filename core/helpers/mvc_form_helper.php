@@ -125,6 +125,20 @@ class MvcFormHelper extends MvcHelper {
         return $html;
     }
     
+    public function password_input($field_name, $options=array()) {
+        $defaults = array(
+            'id' => $this->input_id($field_name),
+            'name' => $this->input_name($field_name),
+            'type' => 'password'
+        );
+        $options = array_merge($defaults, $options);
+        $attributes_html = self::attributes_html($options, 'input');
+        $html = $this->before_input($field_name, $options);
+        $html .= '<input'.$attributes_html.' />';
+        $html .= $this->after_input($field_name, $options);
+        return $html;
+    }
+    
     public function select($field_name, $options=array()) {
         $html = $this->before_input($field_name, $options);
         $html .= $this->select_tag($field_name, $options);
@@ -220,8 +234,11 @@ class MvcFormHelper extends MvcHelper {
         
         $html = $this->before_input($options['select_name'], $select_options);
         $html .= $this->select_tag($options['select_name'], $select_options);
-        
-        $associated_objects = empty($this->object->{MvcInflector::tableize($model_name)}) ? array() : $this->object->{MvcInflector::tableize($model_name)};
+
+        // Fetch all associated objects.
+        // If there aren't any, return empty array
+        $associated_objects = $this->object->{MvcInflector::tableize($model_name)};
+        $associated_objects = empty($associated_objects) ? array() : $associated_objects;
         
         // An empty value is necessary to ensure that data with name $options['ids_input_name'] is submitted; otherwise,
         // if no association objects were selected the save() method wouldn't know that this association data is being
